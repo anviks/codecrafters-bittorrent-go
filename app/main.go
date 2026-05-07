@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	bencode "github.com/jackpal/bencode-go" // Available if you need it!
+	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 	"os"
 	"strconv"
 	"unicode"
