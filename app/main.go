@@ -3,10 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
+	// "io"
 	"os"
 	"strconv"
+	"strings"
 	"unicode"
+
+	bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
 // Ensures gofmt doesn't remove the "os" encoding/json import (feel free to remove this!)
@@ -54,7 +57,8 @@ func main() {
 	if command == "decode" {
 		bencodedValue := os.Args[2]
 
-		decoded, err := decodeBencode(bencodedValue)
+		// decoded, err := decodeBencode(bencodedValue)
+		decoded, err := bencode.Decode(strings.NewReader(bencodedValue))
 		if err != nil {
 			fmt.Println(err)
 			return
