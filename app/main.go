@@ -1,15 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
-	// "io"
 	"os"
 	"strconv"
 	"strings"
 	"unicode"
-
-	bencode "github.com/jackpal/bencode-go" // Available if you need it!
+	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
 // Ensures gofmt doesn't remove the "os" encoding/json import (feel free to remove this!)
@@ -18,31 +17,68 @@ var _ = json.Marshal
 // Example:
 // - 5:hello -> hello
 // - 10:hello12345 -> hello12345
-func decodeBencode(bencodedString string) (interface{}, error) {
-	if unicode.IsDigit(rune(bencodedString[0])) {
-		var firstColonIndex int
+func decodeBencode(reader *bufio.Reader) (any, error) {
+	rn, _, _ := reader.ReadRune()
 
-		for i := 0; i < len(bencodedString); i++ {
-			if bencodedString[i] == ':' {
-				firstColonIndex = i
-				break
+	if unicode.IsDigit(rn) {
+		var lengthStr strings.Builder
+
+		for ; rn != ':'; rn, _, _ = reader.ReadRune() {
+			lengthStr.WriteRune((rn))
+		}
+
+		length, err := strconv.Atoi(lengthStr.String())
+		if err != nil {
+			return "", err
+		}
+
+		var result strings.Builder
+
+		for range length {
+			rn, _, _ = reader.ReadRune()
+			result.WriteRune((rn))
+		}
+
+		return result.String(), nil
+	} else if rn == 'i' {
+		var numStr strings.Builder
+
+		rn, _, _ = reader.ReadRune()
+		for ; rn != 'e'; rn, _, _ = reader.ReadRune() {
+			numStr.WriteRune(rn)
+		}
+
+		num, err := strconv.Atoi(numStr.String())
+		if err != nil {
+			return "", err
+		}
+
+		return num, nil
+	} else if rn == 'l' {
+		var ls []any
+
+		for {
+			b, _ := reader.Peek(1)
+			rn = rune(b[0])
+			if rn == 'e' {
+				return ls, nil
 			}
+			result, _ := decodeBencode(reader)
+			ls = append(ls, result)
 		}
+	} else if rn == 'd' {
+		d := make(map[string]any)
 
-		lengthStr := bencodedString[:firstColonIndex]
-
-		length, err := strconv.Atoi(lengthStr)
-		if err != nil {
-			return "", err
+		for {
+			b, _ := reader.Peek(1)
+			rn = rune(b[0])
+			if rn == 'e' {
+				return d, nil
+			}
+			key, _ := decodeBencode(reader)
+			value, _ := decodeBencode(reader)
+			d[key.(string)] = value
 		}
-
-		return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], nil
-	} else if bencodedString[0] == 'i' {
-		length, err := strconv.Atoi(bencodedString[1 : len(bencodedString)-1])
-		if err != nil {
-			return "", err
-		}
-		return length, nil
 	} else {
 		return "", fmt.Errorf("Only strings are supported at the moment")
 	}
@@ -57,8 +93,8 @@ func main() {
 	if command == "decode" {
 		bencodedValue := os.Args[2]
 
-		// decoded, err := decodeBencode(bencodedValue)
-		decoded, err := bencode.Decode(strings.NewReader(bencodedValue))
+		decoded, err := decodeBencode(bufio.NewReader(strings.NewReader(bencodedValue)))
+		// decoded, err := bencode.Decode(strings.NewReader(bencodedValue))
 		if err != nil {
 			fmt.Println(err)
 			return
