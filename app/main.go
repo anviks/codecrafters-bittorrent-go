@@ -94,7 +94,6 @@ func main() {
 		bencodedValue := os.Args[2]
 
 		decoded, err := decodeBencode(bufio.NewReader(strings.NewReader(bencodedValue)))
-		// decoded, err := bencode.Decode(strings.NewReader(bencodedValue))
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -102,6 +101,13 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
+	} else if command == "info" {
+		torrentPath := os.Args[2]
+		file, _ := os.OpenFile(torrentPath, os.O_RDONLY, 0777)
+		decoded, _ := decodeBencode(bufio.NewReader(file))
+		file.Close()
+		data := decoded.(map[string]any)
+		fmt.Printf("Tracker URL: %s\nLength: %d\n", data["announce"], data["info"].(map[string]any)["length"])
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
