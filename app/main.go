@@ -40,9 +40,15 @@ func main() {
 		decoded, _ := bencode.Decode(bufio.NewReader(file))
 		file.Close()
 		data := decoded.(map[string]any)
-		encoded_info, _ := bencode.Encode(data["info"])
+		info := data["info"].(map[string]any)
+		encoded_info, _ := bencode.Encode(info)
 		hash := sha1.Sum([]byte(encoded_info))
-		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\n", data["announce"], data["info"].(map[string]any)["length"], hex.EncodeToString(hash[:]))
+		var pieceHashes strings.Builder
+		for i := 0; i < len(info["pieces"].(string)); i += 20 {
+			pieceHashes.WriteString("\n")
+			pieceHashes.WriteString(hex.EncodeToString([]byte(info["pieces"].(string)[i : i+20])))
+		}
+		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\nPiece Length: %d\nPiece Hashes: %s\n", data["announce"], info["length"], hex.EncodeToString(hash[:]), info["piece length"], pieceHashes.String())
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
