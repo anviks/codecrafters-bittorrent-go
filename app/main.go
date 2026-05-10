@@ -2,87 +2,19 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
-	"unicode"
+
+	"github.com/codecrafters-io/bittorrent-starter-go/app/bencode"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
 // Ensures gofmt doesn't remove the "os" encoding/json import (feel free to remove this!)
 var _ = json.Marshal
-
-// Example:
-// - 5:hello -> hello
-// - 10:hello12345 -> hello12345
-func decodeBencode(reader *bufio.Reader) (any, error) {
-	rn, _, _ := reader.ReadRune()
-
-	if unicode.IsDigit(rn) {
-		var lengthStr strings.Builder
-
-		for ; rn != ':'; rn, _, _ = reader.ReadRune() {
-			lengthStr.WriteRune((rn))
-		}
-
-		length, err := strconv.Atoi(lengthStr.String())
-		if err != nil {
-			return "", err
-		}
-
-		var result strings.Builder
-
-		for range length {
-			rn, _, _ = reader.ReadRune()
-			result.WriteRune((rn))
-		}
-
-		return result.String(), nil
-	} else if rn == 'i' {
-		var numStr strings.Builder
-
-		rn, _, _ = reader.ReadRune()
-		for ; rn != 'e'; rn, _, _ = reader.ReadRune() {
-			numStr.WriteRune(rn)
-		}
-
-		num, err := strconv.Atoi(numStr.String())
-		if err != nil {
-			return "", err
-		}
-
-		return num, nil
-	} else if rn == 'l' {
-		var ls []any
-
-		for {
-			b, _ := reader.Peek(1)
-			rn = rune(b[0])
-			if rn == 'e' {
-				return ls, nil
-			}
-			result, _ := decodeBencode(reader)
-			ls = append(ls, result)
-		}
-	} else if rn == 'd' {
-		d := make(map[string]any)
-
-		for {
-			b, _ := reader.Peek(1)
-			rn = rune(b[0])
-			if rn == 'e' {
-				return d, nil
-			}
-			key, _ := decodeBencode(reader)
-			value, _ := decodeBencode(reader)
-			d[key.(string)] = value
-		}
-	} else {
-		return "", fmt.Errorf("Only strings are supported at the moment")
-	}
-}
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -90,10 +22,11 @@ func main() {
 
 	command := os.Args[1]
 
-	if command == "decode" {
+	switch command {
+	case "decode":
 		bencodedValue := os.Args[2]
 
-		decoded, err := decodeBencode(bufio.NewReader(strings.NewReader(bencodedValue)))
+		decoded, err := bencode.Decode(bufio.NewReader(strings.NewReader(bencodedValue)))
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -101,14 +34,16 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
-	} else if command == "info" {
+	case "info":
 		torrentPath := os.Args[2]
 		file, _ := os.OpenFile(torrentPath, os.O_RDONLY, 0777)
-		decoded, _ := decodeBencode(bufio.NewReader(file))
+		decoded, _ := bencode.Decode(bufio.NewReader(file))
 		file.Close()
 		data := decoded.(map[string]any)
-		fmt.Printf("Tracker URL: %s\nLength: %d\n", data["announce"], data["info"].(map[string]any)["length"])
-	} else {
+		encoded_info, _ := bencode.Encode(data["info"])
+		hash := sha1.Sum([]byte(encoded_info))
+		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\n", data["announce"], data["info"].(map[string]any)["length"], hex.EncodeToString(hash[:]))
+	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
 	}
