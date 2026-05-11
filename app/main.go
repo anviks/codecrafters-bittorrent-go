@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -34,7 +35,7 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
-	case "info", "peers":
+	case "info", "peers", "handshake":
 		torrentPath := os.Args[2]
 		file, _ := os.OpenFile(torrentPath, os.O_RDONLY, 0777)
 		decoded, _ := bencode.Decode(bufio.NewReader(file))
@@ -48,9 +49,11 @@ func main() {
 			pieceHashes.WriteString("\n")
 			pieceHashes.WriteString(hex.EncodeToString([]byte(info["pieces"].(string)[i : i+20])))
 		}
-		if command == "info" {
+
+		switch command {
+		case "info":
 			fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\nPiece Length: %d\nPiece Hashes: %s\n", data["announce"], info["length"], hex.EncodeToString(hash[:]), info["piece length"], pieceHashes.String())
-		} else {
+		case "peers":
 			vals := make(url.Values)
 			vals.Add("info_hash", string(hash[:]))
 			vals.Add("peer_id", "idk_some_randomid_ig")
@@ -67,6 +70,19 @@ func main() {
 				fmt.Fprintf(&peerStr, "%d.%d.%d.%d:%d\n", peers[i], peers[i+1], peers[i+2], peers[i+3], int32(peers[i+4])<<8|int32(peers[i+5]))
 			}
 			fmt.Print(peerStr.String())
+		case "handshake":
+			conn, _ := net.Dial("tcp", os.Args[3])
+			message := make([]byte, 68)
+			message[0] = 19
+			copy(message[1:20], []byte("BitTorrent protocol"))
+			copy(message[20:28], []byte{0, 0, 0, 0, 0, 0, 0, 0})
+			copy(message[28:48], hash[:])
+			copy(message[48:68], []byte("idk_some_randomid_ig"))
+			conn.Write(message[:])
+			buf := make([]byte, 68)
+			conn.Read(buf)
+			peerId := buf[48:68]
+			fmt.Printf("Peer ID: %s\n", hex.EncodeToString(peerId))
 		}
 	default:
 		fmt.Println("Unknown command: " + command)
