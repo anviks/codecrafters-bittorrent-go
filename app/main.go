@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/sha1"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -71,7 +72,7 @@ func findPeers(torrent TorrentFile) []string {
 
 	var peerStr []string
 	for i := 0; i < len(peers); i += 6 {
-		peerStr = append(peerStr, fmt.Sprintf("%d.%d.%d.%d:%d", peers[i], peers[i+1], peers[i+2], peers[i+3], int32(peers[i+4])<<8|int32(peers[i+5])))
+		peerStr = append(peerStr, fmt.Sprintf("%d.%d.%d.%d:%d", peers[i], peers[i+1], peers[i+2], peers[i+3], binary.BigEndian.Uint16(peers[i+4:i+6])))
 	}
 
 	return peerStr
