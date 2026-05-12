@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -88,6 +91,23 @@ func performHandshake(connection net.Conn, infoHash []byte) {
 	connection.Write(message)
 }
 
+func readPeerMessage(connection net.Conn) []byte {
+	lenBuf := make([]byte, 4)
+	io.ReadFull(connection, lenBuf)
+	length := binary.BigEndian.Uint32(lenBuf)
+	msgBuf := make([]byte, length)
+	io.ReadFull(connection, msgBuf)
+
+	return msgBuf
+}
+
+func writePeerMessage(connection net.Conn, bytes []byte) {
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(bytes)))
+	connection.Write(lenBuf)
+	connection.Write(bytes)
+}
+
 func main() {
 	command := os.Args[1]
 
@@ -123,7 +143,43 @@ func main() {
 			conn.Read(buf)
 			peerId := buf[48:68]
 			fmt.Printf("Peer ID: %s\n", hex.EncodeToString(peerId))
+			fmt.Printf("Full: %s\n", hex.EncodeToString(buf))
 		}
+	case "download_piece":
+		outputPath := os.Args[3]
+		torrent := parseTorrentFile(os.Args[4])
+		peers := findPeers(torrent)
+		conn, _ := net.Dial("tcp", peers[0])
+		performHandshake(conn, torrent.InfoHash)
+		buf := make([]byte, 68)
+		io.ReadFull(conn, buf)
+		peerId := buf[48:68]
+		fmt.Printf("Peer ID: %s\n", hex.EncodeToString(peerId))
+		fmt.Printf("Idk: %s\n", hex.EncodeToString(readPeerMessage(conn)))
+		writePeerMessage(conn, []byte{0x02})
+		if !bytes.Equal(readPeerMessage(conn), []byte{0x01}) {
+			return
+		}
+
+		blockSize := math.Pow(2, 14)
+		pieceIndex, _ := strconv.Atoi(os.Args[5])
+
+		file, _ := os.Create(outputPath)
+
+		for i := 0; i < torrent.Info.PieceLength; i += int(blockSize) {
+			message := []byte{0x06}
+			message = binary.BigEndian.AppendUint32(message, uint32(pieceIndex))
+			message = binary.BigEndian.AppendUint32(message, uint32(i))
+			length := int(math.Min(blockSize, float64(torrent.Info.PieceLength)))
+			message = binary.BigEndian.AppendUint32(message, uint32(length))
+			writePeerMessage(conn, message)
+			msg := readPeerMessage(conn)
+			data := msg[9:]
+			fmt.Printf("Downloaded %d/%d bytes of the piece\n", i, torrent.Info.PieceLength)
+			file.Write(data)
+		}
+
+		file.Close()
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
