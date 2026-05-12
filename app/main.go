@@ -161,21 +161,25 @@ func main() {
 			return
 		}
 
-		blockSize := math.Pow(2, 14)
+		const blockSize = 16384 // 2 ** 14 -> 16KiB
 		pieceIndex, _ := strconv.Atoi(os.Args[5])
+
+		pieceLength := torrent.Info.PieceLength
+		leftToDownload := torrent.Info.Length - pieceIndex*pieceLength
+		pieceLength = min(pieceLength, leftToDownload)
 
 		file, _ := os.Create(outputPath)
 
-		for i := 0; i < torrent.Info.PieceLength; i += int(blockSize) {
+		for i := 0; i < pieceLength; i += int(blockSize) {
 			message := []byte{0x06}
 			message = binary.BigEndian.AppendUint32(message, uint32(pieceIndex))
 			message = binary.BigEndian.AppendUint32(message, uint32(i))
-			length := int(math.Min(blockSize, float64(torrent.Info.PieceLength)))
+			length := int(math.Min(blockSize, float64(pieceLength-i)))
 			message = binary.BigEndian.AppendUint32(message, uint32(length))
 			writePeerMessage(conn, message)
 			msg := readPeerMessage(conn)
 			data := msg[9:]
-			fmt.Printf("Downloaded %d/%d bytes of the piece\n", i, torrent.Info.PieceLength)
+			fmt.Printf("Downloaded %d/%d bytes of the piece\n", i+length, pieceLength)
 			file.Write(data)
 		}
 
