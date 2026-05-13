@@ -47,12 +47,16 @@ func Decode(reader *bufio.Reader) (any, error) {
 
 		return num, nil
 	} else if rn == 'l' {
-		var ls []any
+		ls := make([]any, 0)
 
 		for {
-			b, _ := reader.Peek(1)
+			b, err := reader.Peek(1)
+			if err != nil {
+				return nil, fmt.Errorf("Unexpected end of list: %w", err)
+			}
 			rn = rune(b[0])
 			if rn == 'e' {
+				reader.ReadByte()
 				return ls, nil
 			}
 			result, _ := Decode(reader)
@@ -62,9 +66,13 @@ func Decode(reader *bufio.Reader) (any, error) {
 		d := make(map[string]any)
 
 		for {
-			b, _ := reader.Peek(1)
+			b, err := reader.Peek(1)
+			if err != nil {
+				return nil, fmt.Errorf("Unexpected end of dict: %w", err)
+			}
 			rn = rune(b[0])
 			if rn == 'e' {
+				reader.ReadByte()
 				return d, nil
 			}
 			key, _ := Decode(reader)
