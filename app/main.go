@@ -108,7 +108,7 @@ func writePeerMessage(connection net.Conn, bytes []byte) {
 	connection.Write(bytes)
 }
 
-func downloadPieceFromPeer(torrent TorrentFile, pieceIndex int, peerIp string, outputPath string) error {
+func getPieceFromPeer(torrent TorrentFile, pieceIndex int, peerIp string) ([]byte, error) {
 	conn, _ := net.Dial("tcp", peerIp)
 	performHandshake(conn, torrent.InfoHash)
 	buf := make([]byte, 68)
@@ -119,7 +119,7 @@ func downloadPieceFromPeer(torrent TorrentFile, pieceIndex int, peerIp string, o
 	writePeerMessage(conn, []byte{0x02})
 	msg := readPeerMessage(conn)
 	if !bytes.Equal(msg, []byte{0x01}) {
-		return fmt.Errorf("Expected to receive an unchoke message (message id of 1), but received a message with id of %d", msg[0])
+		return nil, fmt.Errorf("Expected to receive an unchoke message (message id of 1), but received a message with id of %d", msg[0])
 	}
 
 	const blockSize = 16384 // 2 ** 14 -> 16KiB
@@ -146,14 +146,10 @@ func downloadPieceFromPeer(torrent TorrentFile, pieceIndex int, peerIp string, o
 	actualChecksum := sha1.Sum(data)
 
 	if !bytes.Equal(actualChecksum[:], expectedChecksum) {
-		return fmt.Errorf("Invalid checksum")
+		return nil, fmt.Errorf("Invalid checksum")
 	}
 
-	file, _ := os.Create(outputPath)
-	file.Write(data)
-	file.Close()
-
-	return nil
+	return data, nil
 }
 
 func main() {
@@ -197,11 +193,17 @@ func main() {
 		outputPath := os.Args[3]
 		torrent := parseTorrentFile(os.Args[4])
 		pieceIndex, _ := strconv.Atoi(os.Args[5])
+
 		peers := findPeers(torrent)
-		err := downloadPieceFromPeer(torrent, pieceIndex, peers[0], outputPath)
+		data, err := getPieceFromPeer(torrent, pieceIndex, peers[0])
 		if err != nil {
 			fmt.Println(err)
+			return
 		}
+
+		file, _ := os.Create(outputPath)
+		file.Write(data)
+		file.Close()
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
