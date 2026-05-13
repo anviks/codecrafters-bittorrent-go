@@ -81,7 +81,7 @@ func findPeers(torrent TorrentFile) []string {
 	return peerStr
 }
 
-func performHandshake(connection net.Conn, infoHash []byte) {
+func performHandshake(connection net.Conn, infoHash []byte) error {
 	message := make([]byte, 68)
 	message[0] = 19
 	copy(message[1:20], []byte("BitTorrent protocol"))
@@ -89,6 +89,18 @@ func performHandshake(connection net.Conn, infoHash []byte) {
 	copy(message[28:48], infoHash)
 	copy(message[48:68], []byte("idk_some_randomid_ig"))
 	connection.Write(message)
+
+	buf := make([]byte, 68)
+	io.ReadFull(connection, buf)
+	peerId := buf[48:68]
+	fmt.Printf("Peer ID: %s\n", hex.EncodeToString(peerId))
+	fmt.Printf("Idk: %s\n", hex.EncodeToString(readPeerMessage(connection)))
+	writePeerMessage(connection, []byte{0x02})
+	msg := readPeerMessage(connection)
+	if !bytes.Equal(msg, []byte{0x01}) {
+		return fmt.Errorf("Expected to receive an unchoke message (message id of 1), but received a message with id of %d", msg[0])
+	}
+	return nil
 }
 
 func readPeerMessage(connection net.Conn) []byte {
@@ -109,17 +121,6 @@ func writePeerMessage(connection net.Conn, bytes []byte) {
 }
 
 func getPieceFromConnection(conn net.Conn, torrent TorrentFile, pieceIndex int) ([]byte, error) {
-	buf := make([]byte, 68)
-	io.ReadFull(conn, buf)
-	peerId := buf[48:68]
-	fmt.Printf("Peer ID: %s\n", hex.EncodeToString(peerId))
-	fmt.Printf("Idk: %s\n", hex.EncodeToString(readPeerMessage(conn)))
-	writePeerMessage(conn, []byte{0x02})
-	msg := readPeerMessage(conn)
-	if !bytes.Equal(msg, []byte{0x01}) {
-		return nil, fmt.Errorf("Expected to receive an unchoke message (message id of 1), but received a message with id of %d", msg[0])
-	}
-
 	const blockSize = 16384 // 2 ** 14 -> 16KiB
 
 	pieceLength := torrent.Info.PieceLength
