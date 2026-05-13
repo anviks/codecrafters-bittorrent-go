@@ -108,9 +108,7 @@ func writePeerMessage(connection net.Conn, bytes []byte) {
 	connection.Write(bytes)
 }
 
-func getPieceFromPeer(torrent TorrentFile, pieceIndex int, peerIp string) ([]byte, error) {
-	conn, _ := net.Dial("tcp", peerIp)
-	performHandshake(conn, torrent.InfoHash)
+func getPieceFromConnection(conn net.Conn, torrent TorrentFile, pieceIndex int) ([]byte, error) {
 	buf := make([]byte, 68)
 	io.ReadFull(conn, buf)
 	peerId := buf[48:68]
@@ -195,7 +193,11 @@ func main() {
 		pieceIndex, _ := strconv.Atoi(os.Args[5])
 
 		peers := findPeers(torrent)
-		data, err := getPieceFromPeer(torrent, pieceIndex, peers[0])
+		conn, _ := net.Dial("tcp", peers[0])
+		performHandshake(conn, torrent.InfoHash)
+		data, err := getPieceFromConnection(conn, torrent, pieceIndex)
+		conn.Close()
+
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -204,6 +206,29 @@ func main() {
 		file, _ := os.Create(outputPath)
 		file.Write(data)
 		file.Close()
+	case "download":
+		outputPath := os.Args[3]
+		torrent := parseTorrentFile(os.Args[4])
+		peers := findPeers(torrent)
+		conn, _ := net.Dial("tcp", peers[0])
+		performHandshake(conn, torrent.InfoHash)
+		file, _ := os.Create(outputPath)
+
+		pieceCount := len(torrent.Info.Pieces) / 20
+		for i := range pieceCount {
+			data, err := getPieceFromConnection(conn, torrent, i)
+			if err != nil {
+				fmt.Println(err)
+				file.Close()
+				os.Remove(outputPath)
+				conn.Close()
+				return
+			}
+			file.WriteAt(data, int64(i*torrent.Info.PieceLength))
+		}
+
+		file.Close()
+		conn.Close()
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
