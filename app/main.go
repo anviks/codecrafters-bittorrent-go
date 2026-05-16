@@ -245,6 +245,14 @@ func main() {
 
 		file.Close()
 		conn.Close()
+	case "magnet_parse":
+		magnet_link := os.Args[2]
+		if magnet_link[:8] != "magnet:?" {
+			fmt.Println("Malformed magnet url: " + magnet_link)
+			return
+		}
+		vals, _ := url.ParseQuery(magnet_link[8:])
+		fmt.Printf("Tracker URL: %s\nInfo Hash: %s\n", vals["tr"][0], vals["xt"][0][9:])
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
