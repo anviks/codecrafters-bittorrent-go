@@ -252,7 +252,11 @@ func main() {
 			return
 		}
 		vals, _ := url.ParseQuery(magnet_link[8:])
-		fmt.Printf("Tracker URL: %s\nInfo Hash: %s\n", vals["tr"][0], vals["xt"][0][9:])
+		if len(vals["tr"]) == 1 {
+			fmt.Printf("Tracker URL: %s\nInfo Hash: %s\n", vals["tr"][0], vals["xt"][0][9:])
+		} else {
+			fmt.Printf("Tracker URLs:\n%s\nInfo Hash: %s\n", strings.Join(vals["tr"], "\n"), vals["xt"][0][9:])
+		}
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
