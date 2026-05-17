@@ -64,6 +64,19 @@ func parseTorrentFile(torrentPath string) TorrentFile {
 	}
 }
 
+func parseMagnetLink(magnetLink string) (TorrentFile, error) {
+	if magnetLink[:8] != "magnet:?" {
+		return TorrentFile{}, fmt.Errorf("Malformed magnet url: %s", magnetLink)
+	}
+	vals, _ := url.ParseQuery(magnetLink[8:])
+	infoHash, _ := hex.DecodeString(vals["xt"][0][9:])
+	return TorrentFile{
+		Announce: vals["tr"][0],
+		Info:     TorrentInfo{Name: vals["dn"][0], Length: 999},
+		InfoHash: infoHash,
+	}, nil
+}
+
 func findPeers(torrent TorrentFile) []string {
 	vals := make(url.Values)
 	vals.Add("info_hash", string(torrent.InfoHash))
@@ -86,11 +99,15 @@ func findPeers(torrent TorrentFile) []string {
 	return peerStr
 }
 
-func performHandshake(connection net.Conn, infoHash []byte) (ConnectionInfo, error) {
+func performHandshake(connection net.Conn, infoHash []byte, supportsExtensions bool) (ConnectionInfo, error) {
 	message := make([]byte, 68)
 	message[0] = 19
+	var extByte byte = 0
+	if supportsExtensions {
+		extByte = 0x10
+	}
 	copy(message[1:20], []byte("BitTorrent protocol"))
-	copy(message[20:28], []byte{0, 0, 0, 0, 0, 0, 0, 0})
+	copy(message[20:28], []byte{0, 0, 0, 0, 0, extByte, 0, 0})
 	copy(message[28:48], infoHash)
 	copy(message[48:68], []byte("idk_some_randomid_ig"))
 	connection.Write(message)
@@ -105,7 +122,7 @@ func performHandshake(connection net.Conn, infoHash []byte) (ConnectionInfo, err
 
 	writePeerMessage(connection, []byte{0x02})
 	msg := readPeerMessage(connection)
-	if !bytes.Equal(msg, []byte{0x01}) {
+	if !supportsExtensions && !bytes.Equal(msg, []byte{0x01}) {
 		return ConnectionInfo{}, fmt.Errorf("Expected to receive an unchoke message (message id of 1), but received a message with id of %d", msg[0])
 	}
 
@@ -190,7 +207,7 @@ func main() {
 			fmt.Println(strings.Join(findPeers(torrent), "\n"))
 		case "handshake":
 			conn, _ := net.Dial("tcp", os.Args[3])
-			info, _ := performHandshake(conn, torrent.InfoHash)
+			info, _ := performHandshake(conn, torrent.InfoHash, false)
 			fmt.Printf("Peer ID: %s\n", hex.EncodeToString(info.PeerId))
 		}
 	case "download_piece":
@@ -204,7 +221,7 @@ func main() {
 
 		for _, peer := range peers {
 			conn, _ := net.Dial("tcp", peer)
-			info, _ := performHandshake(conn, torrent.InfoHash)
+			info, _ := performHandshake(conn, torrent.InfoHash, false)
 			hasPiece := info.BitField[pieceIndex/8] & (1 << (7 - pieceIndex%8))
 			if hasPiece == 0x01 {
 				data, err = getPieceFromConnection(conn, torrent, pieceIndex)
@@ -227,7 +244,7 @@ func main() {
 		torrent := parseTorrentFile(os.Args[4])
 		peers := findPeers(torrent)
 		conn, _ := net.Dial("tcp", peers[0])
-		performHandshake(conn, torrent.InfoHash)
+		performHandshake(conn, torrent.InfoHash, false)
 		file, _ := os.Create(outputPath)
 
 		pieceCount := len(torrent.Info.Pieces) / 20
@@ -246,17 +263,19 @@ func main() {
 		file.Close()
 		conn.Close()
 	case "magnet_parse":
-		magnet_link := os.Args[2]
-		if magnet_link[:8] != "magnet:?" {
-			fmt.Println("Malformed magnet url: " + magnet_link)
+		torrent, _ := parseMagnetLink(os.Args[2])
+		fmt.Printf("Tracker URL: %s\nInfo Hash: %s\n", torrent.Announce, torrent.InfoHash)
+	case "magnet_handshake":
+		torrent, _ := parseMagnetLink(os.Args[2])
+		peers := findPeers(torrent)
+		conn, _ := net.Dial("tcp", peers[0])
+		info, err := performHandshake(conn, torrent.InfoHash, true)
+		if err != nil {
+			fmt.Println(err)
 			return
 		}
-		vals, _ := url.ParseQuery(magnet_link[8:])
-		if len(vals["tr"]) == 1 {
-			fmt.Printf("Tracker URL: %s\nInfo Hash: %s\n", vals["tr"][0], vals["xt"][0][9:])
-		} else {
-			fmt.Printf("Tracker URLs:\n%s\nInfo Hash: %s\n", strings.Join(vals["tr"], "\n"), vals["xt"][0][9:])
-		}
+		fmt.Println("Peer ID: " + hex.EncodeToString(info.PeerId))
+		conn.Close()
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
