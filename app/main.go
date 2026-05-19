@@ -266,7 +266,7 @@ func main() {
 				return
 			}
 			hasPiece := info.BitField[pieceIndex/8] & (1 << (7 - pieceIndex%8))
-			if hasPiece == 0x01 {
+			if hasPiece != 0x00 {
 				data, pieceErr = getPieceFromConnection(conn, torrent, pieceIndex)
 				conn.Close()
 				break
