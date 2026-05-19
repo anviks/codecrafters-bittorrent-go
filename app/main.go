@@ -46,6 +46,7 @@ func parseTorrentFile(torrentPath string) TorrentFile {
 	file, _ := os.OpenFile(torrentPath, os.O_RDONLY, 0777)
 	decoded, _ := bencode.Decode(bufio.NewReader(file))
 	buf := make([]byte, 256)
+	file.Seek(0, 0)
 	file.Read(buf)
 	fmt.Println(hex.EncodeToString(buf))
 	file.Close()
