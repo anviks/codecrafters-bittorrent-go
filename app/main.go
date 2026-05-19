@@ -158,7 +158,7 @@ func performHandshake(connection net.Conn, infoHash []byte, supportsMetadataExte
 	writePeerMessage(connection, []byte{0x02})
 	msg := readPeerMessage(connection)
 
-	if !bytes.Equal(msg, []byte{0x01}) {
+	if !supportsMetadataExtension && !bytes.Equal(msg, []byte{0x01}) {
 		var msgId string = "[empty]"
 		if len(msg) > 0 {
 			msgId = string(msg[0])
