@@ -41,6 +41,7 @@ type ConnectionInfo struct {
 	PeerId                    []byte
 	BitField                  []byte // Indicates which pieces the peer has
 	SupportsMetadataExtension bool
+	MetadataExtensionId       int
 }
 
 func parseTorrentFile(torrentPath string) (TorrentFile, error) {
@@ -153,11 +154,15 @@ func performHandshake(connection net.Conn, infoHash []byte, supportsMetadataExte
 		bPayload := []byte(payload)
 		msg := append([]byte{0x14, 0x00}, bPayload...)
 		writePeerMessage(connection, msg)
+		resp := readPeerMessage(connection)
+		decoded, _ := bencode.Decode(bufio.NewReader(bytes.NewReader(resp[2:])))
+		info.MetadataExtensionId = decoded.(map[string]any)["m"].(map[string]any)["ut_metadata"].(int)
 	}
 
 	writePeerMessage(connection, []byte{0x02})
 	msg := readPeerMessage(connection)
 
+	// TODO: !supportsMetadataExtension shouldn't actually be needed here
 	if !supportsMetadataExtension && !bytes.Equal(msg, []byte{0x01}) {
 		var msgId string = "[empty]"
 		if len(msg) > 0 {
@@ -341,6 +346,7 @@ func main() {
 			return
 		}
 		fmt.Println("Peer ID: " + hex.EncodeToString(info.PeerId))
+		fmt.Println("Peer Metadata Extension ID: " + strconv.Itoa(info.MetadataExtensionId))
 		conn.Close()
 	default:
 		fmt.Println("Unknown command: " + command)
