@@ -157,13 +157,13 @@ func performHandshake(connection net.Conn, infoHash []byte, supportsMetadataExte
 		resp := readPeerMessage(connection)
 		decoded, _ := bencode.Decode(bufio.NewReader(bytes.NewReader(resp[2:])))
 		info.MetadataExtensionId = decoded.(map[string]any)["m"].(map[string]any)["ut_metadata"].(int)
+		info.BitField = bitField[1:]
+		return info, nil
 	}
 
 	writePeerMessage(connection, []byte{0x02})
 	msg := readPeerMessage(connection)
-
-	// TODO: !supportsMetadataExtension shouldn't actually be needed here
-	if !supportsMetadataExtension && !bytes.Equal(msg, []byte{0x01}) {
+	if !bytes.Equal(msg, []byte{0x01}) {
 		var msgId string = "[empty]"
 		if len(msg) > 0 {
 			msgId = string(msg[0])
@@ -172,7 +172,6 @@ func performHandshake(connection net.Conn, infoHash []byte, supportsMetadataExte
 	}
 
 	info.BitField = bitField[1:]
-
 	return info, nil
 }
 
