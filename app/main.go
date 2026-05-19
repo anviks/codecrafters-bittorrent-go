@@ -45,6 +45,9 @@ type ConnectionInfo struct {
 func parseTorrentFile(torrentPath string) TorrentFile {
 	file, _ := os.OpenFile(torrentPath, os.O_RDONLY, 0777)
 	decoded, _ := bencode.Decode(bufio.NewReader(file))
+	buf := make([]byte, 2048)
+	file.Read(buf)
+	fmt.Println(hex.EncodeToString(buf))
 	file.Close()
 	d := decoded.(map[string]any)
 
