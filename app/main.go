@@ -123,7 +123,11 @@ func performHandshake(connection net.Conn, infoHash []byte, supportsExtensions b
 	writePeerMessage(connection, []byte{0x02})
 	msg := readPeerMessage(connection)
 	if !supportsExtensions && !bytes.Equal(msg, []byte{0x01}) {
-		return ConnectionInfo{}, fmt.Errorf("Expected to receive an unchoke message (message id of 1), but received a message with id of %d", msg[0])
+		var msgId string = "[empty]"
+		if len(msg) > 0 {
+			msgId = string(msg[0])
+		}
+		return ConnectionInfo{}, fmt.Errorf("Expected to receive an unchoke message (message id of 1), but received a message with id of %s", msgId)
 	}
 
 	return ConnectionInfo{PeerId: peerId, BitField: bitField[1:]}, nil
