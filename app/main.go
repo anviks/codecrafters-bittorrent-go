@@ -108,7 +108,7 @@ func findPeers(torrent TorrentFile) []string {
 	return peerStr
 }
 
-func performHandshake(connection net.Conn, infoHash []byte, supportsExtensions bool) (ConnectionInfo, error) {
+func sendHandshake(connection net.Conn, infoHash []byte, supportsExtensions bool) ([]byte, error) {
 	message := make([]byte, 68)
 	message[0] = 19
 	var extByte byte = 0
@@ -122,8 +122,18 @@ func performHandshake(connection net.Conn, infoHash []byte, supportsExtensions b
 	connection.Write(message)
 
 	buf := make([]byte, 68)
-	io.ReadFull(connection, buf)
-	peerId := buf[48:68]
+	if _, err := io.ReadFull(connection, buf); err != nil {
+		return nil, err
+	}
+	return buf[48:68], nil
+}
+
+func performHandshake(connection net.Conn, infoHash []byte, supportsExtensions bool) (ConnectionInfo, error) {
+	peerId, err := sendHandshake(connection, infoHash, supportsExtensions)
+	if err != nil {
+		return ConnectionInfo{}, err
+	}
+
 	bitField := readPeerMessage(connection)
 	if len(bitField) > 0 && bitField[0] != 0x05 {
 		return ConnectionInfo{}, fmt.Errorf("Expected to receive a bitfield message (message id of 5), but received a message with id of %d", bitField[0])
@@ -224,8 +234,8 @@ func main() {
 			fmt.Println(strings.Join(findPeers(torrent), "\n"))
 		case "handshake":
 			conn, _ := net.Dial("tcp", os.Args[3])
-			info, _ := performHandshake(conn, torrent.InfoHash, false)
-			fmt.Printf("Peer ID: %s\n", hex.EncodeToString(info.PeerId))
+			peerId, _ := sendHandshake(conn, torrent.InfoHash, false)
+			fmt.Printf("Peer ID: %s\n", hex.EncodeToString(peerId))
 		}
 	case "download_piece":
 		outputPath := os.Args[3]
