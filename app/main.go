@@ -42,18 +42,23 @@ type ConnectionInfo struct {
 	BitField []byte // Indicates which pieces the peer has
 }
 
-func parseTorrentFile(torrentPath string) TorrentFile {
-	file, _ := os.OpenFile(torrentPath, os.O_RDONLY, 0777)
-	decoded, _ := bencode.Decode(bufio.NewReader(file))
-	buf := make([]byte, 256)
-	file.Seek(0, 0)
-	file.Read(buf)
-	fmt.Println(hex.EncodeToString(buf))
+func parseTorrentFile(torrentPath string) (TorrentFile, error) {
+	file, err := os.OpenFile(torrentPath, os.O_RDONLY, 0777)
+	if err != nil {
+		return TorrentFile{}, err
+	}
+	decoded, err := bencode.Decode(bufio.NewReader(file))
+	if err != nil {
+		return TorrentFile{}, err
+	}
 	file.Close()
 	d := decoded.(map[string]any)
 
 	info := d["info"].(map[string]any)
-	encodedInfo, _ := bencode.Encode(info)
+	encodedInfo, err := bencode.Encode(info)
+	if err != nil {
+		return TorrentFile{}, err
+	}
 	infoHash := sha1.Sum([]byte(encodedInfo))
 
 	return TorrentFile{
@@ -65,7 +70,7 @@ func parseTorrentFile(torrentPath string) TorrentFile {
 			Pieces:      info["pieces"].(string),
 		},
 		InfoHash: infoHash[:],
-	}
+	}, nil
 }
 
 func parseMagnetLink(magnetLink string) (TorrentFile, error) {
@@ -201,7 +206,11 @@ func main() {
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
 	case "info", "peers", "handshake":
-		torrent := parseTorrentFile(os.Args[2])
+		torrent, err := parseTorrentFile(os.Args[2])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		var pieceHashes strings.Builder
 		for i := 0; i < len(torrent.Info.Pieces); i += 20 {
 			pieceHashes.WriteString("\n")
@@ -220,27 +229,43 @@ func main() {
 		}
 	case "download_piece":
 		outputPath := os.Args[3]
-		torrent := parseTorrentFile(os.Args[4])
-		pieceIndex, _ := strconv.Atoi(os.Args[5])
+		torrent, err := parseTorrentFile(os.Args[4])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		pieceIndex, err := strconv.Atoi(os.Args[5])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 
 		peers := findPeers(torrent)
 		var data []byte
-		var err error = fmt.Errorf("No peers have that piece")
+		pieceErr := fmt.Errorf("No peers have that piece")
 
 		for _, peer := range peers {
-			conn, _ := net.Dial("tcp", peer)
-			info, _ := performHandshake(conn, torrent.InfoHash, false)
+			conn, err := net.Dial("tcp", peer)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			info, err := performHandshake(conn, torrent.InfoHash, false)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 			hasPiece := info.BitField[pieceIndex/8] & (1 << (7 - pieceIndex%8))
 			if hasPiece == 0x01 {
-				data, err = getPieceFromConnection(conn, torrent, pieceIndex)
+				data, pieceErr = getPieceFromConnection(conn, torrent, pieceIndex)
 				conn.Close()
 				break
 			}
 			conn.Close()
 		}
 
-		if err != nil {
-			fmt.Println(err)
+		if pieceErr != nil {
+			fmt.Println(pieceErr)
 			return
 		}
 
@@ -249,7 +274,11 @@ func main() {
 		file.Close()
 	case "download":
 		outputPath := os.Args[3]
-		torrent := parseTorrentFile(os.Args[4])
+		torrent, err := parseTorrentFile(os.Args[4])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		peers := findPeers(torrent)
 		conn, _ := net.Dial("tcp", peers[0])
 		performHandshake(conn, torrent.InfoHash, false)

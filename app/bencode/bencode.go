@@ -14,12 +14,18 @@ import (
 // - 5:hello -> hello
 // - 10:hello12345 -> hello12345
 func Decode(reader *bufio.Reader) (any, error) {
-	rn, _, _ := reader.ReadRune()
+	rn, _, err := reader.ReadRune()
+	if err != nil {
+		return nil, err
+	}
 
 	if unicode.IsDigit(rn) {
 		var lengthStr strings.Builder
 
-		for ; rn != ':'; rn, _, _ = reader.ReadRune() {
+		for ; rn != ':'; rn, _, err = reader.ReadRune() {
+			if err != nil {
+				return nil, err
+			}
 			lengthStr.WriteRune((rn))
 		}
 
@@ -35,8 +41,14 @@ func Decode(reader *bufio.Reader) (any, error) {
 	} else if rn == 'i' {
 		var numStr strings.Builder
 
-		rn, _, _ = reader.ReadRune()
-		for ; rn != 'e'; rn, _, _ = reader.ReadRune() {
+		rn, _, err := reader.ReadRune()
+		if err != nil {
+			return nil, err
+		}
+		for ; rn != 'e'; rn, _, err = reader.ReadRune() {
+			if err != nil {
+				return nil, err
+			}
 			numStr.WriteRune(rn)
 		}
 
@@ -59,7 +71,10 @@ func Decode(reader *bufio.Reader) (any, error) {
 				reader.ReadByte()
 				return ls, nil
 			}
-			result, _ := Decode(reader)
+			result, err := Decode(reader)
+			if err != nil {
+				return nil, err
+			}
 			ls = append(ls, result)
 		}
 	} else if rn == 'd' {
@@ -75,8 +90,14 @@ func Decode(reader *bufio.Reader) (any, error) {
 				reader.ReadByte()
 				return d, nil
 			}
-			key, _ := Decode(reader)
-			value, _ := Decode(reader)
+			key, err := Decode(reader)
+			if err != nil {
+				return nil, err
+			}
+			value, err := Decode(reader)
+			if err != nil {
+				return nil, err
+			}
 			d[key.(string)] = value
 		}
 	} else {
