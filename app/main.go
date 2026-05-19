@@ -118,7 +118,7 @@ func performHandshake(connection net.Conn, infoHash []byte, supportsExtensions b
 	io.ReadFull(connection, buf)
 	peerId := buf[48:68]
 	bitField := readPeerMessage(connection)
-	if bitField[0] != 0x05 {
+	if len(bitField) > 0 && bitField[0] != 0x05 {
 		return ConnectionInfo{}, fmt.Errorf("Expected to receive a bitfield message (message id of 5), but received a message with id of %d", bitField[0])
 	}
 
