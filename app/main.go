@@ -311,7 +311,7 @@ func main() {
 		conn.Close()
 	case "magnet_parse":
 		torrent, _ := parseMagnetLink(os.Args[2])
-		fmt.Printf("Tracker URL: %s\nInfo Hash: %s\n", torrent.Announce, torrent.InfoHash)
+		fmt.Printf("Tracker URL: %s\nInfo Hash: %s\n", torrent.Announce, hex.EncodeToString(torrent.InfoHash))
 	case "magnet_handshake":
 		torrent, _ := parseMagnetLink(os.Args[2])
 		peers := findPeers(torrent)
