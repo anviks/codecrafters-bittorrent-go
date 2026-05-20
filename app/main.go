@@ -226,6 +226,30 @@ func getPieceFromConnection(conn net.Conn, torrent TorrentFile, pieceIndex int) 
 	return data, nil
 }
 
+func requestMetadata(conn net.Conn, info ConnectionInfo) {
+	encoded, _ := bencode.Encode(map[string]any{"msg_type": 0, "piece": 0})
+	msg := append([]byte{0x14, byte(info.MetadataExtensionId)}, []byte(encoded)...)
+	writePeerMessage(conn, msg)
+}
+
+func receiveMetadata(conn net.Conn) TorrentInfo {
+	resp := readPeerMessage(conn)
+	reader := bufio.NewReader(bytes.NewReader(resp[2:]))
+	bencode.Decode(reader)
+	decoded2, _ := bencode.Decode(reader)
+
+	return getTorrentInfo(decoded2.(map[string]any))
+}
+
+func printTorrentInfo(torrent TorrentFile) {
+	var pieceHashes strings.Builder
+	for i := 0; i < len(torrent.Info.Pieces); i += 20 {
+		pieceHashes.WriteString("\n")
+		pieceHashes.WriteString(hex.EncodeToString([]byte(torrent.Info.Pieces[i : i+20])))
+	}
+	fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\nPiece Length: %d\nPiece Hashes: %s\n", torrent.Announce, torrent.Info.Length, hex.EncodeToString(torrent.InfoHash), torrent.Info.PieceLength, pieceHashes.String())
+}
+
 func main() {
 	command := os.Args[1]
 
@@ -247,15 +271,10 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		var pieceHashes strings.Builder
-		for i := 0; i < len(torrent.Info.Pieces); i += 20 {
-			pieceHashes.WriteString("\n")
-			pieceHashes.WriteString(hex.EncodeToString([]byte(torrent.Info.Pieces[i : i+20])))
-		}
 
 		switch command {
 		case "info":
-			fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\nPiece Length: %d\nPiece Hashes: %s\n", torrent.Announce, torrent.Info.Length, hex.EncodeToString(torrent.InfoHash), torrent.Info.PieceLength, pieceHashes.String())
+			printTorrentInfo(torrent)
 		case "peers":
 			fmt.Println(strings.Join(findPeers(torrent), "\n"))
 		case "handshake":
@@ -354,31 +373,43 @@ func main() {
 		torrent, _ := parseMagnetLink(os.Args[2])
 		peers := findPeers(torrent)
 		conn, _ := net.Dial("tcp", peers[0])
-		info, err := performHandshake(conn, torrent.InfoHash, true)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		encoded, err := bencode.Encode(map[string]any{"msg_type": 0, "piece": 0})
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		msg := append([]byte{0x14, byte(info.MetadataExtensionId)}, []byte(encoded)...)
-		writePeerMessage(conn, msg)
-		resp := readPeerMessage(conn)
+		info, _ := performHandshake(conn, torrent.InfoHash, true)
+		requestMetadata(conn, info)
+		torrent.Info = receiveMetadata(conn)
 		conn.Close()
-		reader := bufio.NewReader(bytes.NewReader(resp[2:]))
-		bencode.Decode(reader)
-		decoded2, _ := bencode.Decode(reader)
+		printTorrentInfo(torrent)
+	case "magnet_download_piece":
+		outputPath := os.Args[3]
+		torrent, _ := parseMagnetLink(os.Args[4])
+		pieceIndex, _ := strconv.Atoi(os.Args[5])
 
-		torrent.Info = getTorrentInfo(decoded2.(map[string]any))
-		var pieceHashes strings.Builder
-		for i := 0; i < len(torrent.Info.Pieces); i += 20 {
-			pieceHashes.WriteString("\n")
-			pieceHashes.WriteString(hex.EncodeToString([]byte(torrent.Info.Pieces[i : i+20])))
+		peers := findPeers(torrent)
+		var data []byte
+		pieceErr := fmt.Errorf("No peers have that piece")
+
+		for _, peer := range peers {
+			conn, _ := net.Dial("tcp", peer)
+			info, _ := performHandshake(conn, torrent.InfoHash, true)
+			requestMetadata(conn, info)
+			torrent.Info = receiveMetadata(conn)
+
+			hasPiece := info.BitField[pieceIndex/8] & (1 << (7 - pieceIndex%8))
+			if hasPiece != 0x00 {
+				data, pieceErr = getPieceFromConnection(conn, torrent, pieceIndex)
+				conn.Close()
+				break
+			}
+			conn.Close()
 		}
-		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\nPiece Length: %d\nPiece Hashes: %s\n", torrent.Announce, torrent.Info.Length, hex.EncodeToString(torrent.InfoHash), torrent.Info.PieceLength, pieceHashes.String())
+
+		if pieceErr != nil {
+			fmt.Println(pieceErr)
+			return
+		}
+
+		file, _ := os.Create(outputPath)
+		file.Write(data)
+		file.Close()
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
