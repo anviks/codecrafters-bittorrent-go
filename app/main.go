@@ -355,9 +355,13 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		encoded, _ := bencode.Encode(map[string]int{"msg_type": 0, "piece": 0})
+		encoded, err := bencode.Encode(map[string]int{"msg_type": 0, "piece": 0})
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		msg := append([]byte{0x14, byte(info.MetadataExtensionId)}, []byte(encoded)...)
-		fmt.Println(msg)
+		fmt.Println(string(msg))
 		writePeerMessage(conn, msg)
 		// msg := readPeerMessage(conn)
 		conn.Close()
