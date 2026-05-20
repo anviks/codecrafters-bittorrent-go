@@ -41,7 +41,7 @@ type ConnectionInfo struct {
 	PeerId                    []byte
 	BitField                  []byte // Indicates which pieces the peer has
 	SupportsMetadataExtension bool
-	MetadataExtensionId       int
+	MetadataExtensionId       byte
 }
 
 func parseTorrentFile(torrentPath string) (TorrentFile, error) {
@@ -151,12 +151,11 @@ func performHandshake(connection net.Conn, infoHash []byte, supportsMetadataExte
 			},
 		}
 		payload, _ := bencode.Encode(payloadDict)
-		bPayload := []byte(payload)
-		msg := append([]byte{0x14, 0x00}, bPayload...)
+		msg := append([]byte{0x14, 0x00}, []byte(payload)...)
 		writePeerMessage(connection, msg)
 		resp := readPeerMessage(connection)
 		decoded, _ := bencode.Decode(bufio.NewReader(bytes.NewReader(resp[2:])))
-		info.MetadataExtensionId = decoded.(map[string]any)["m"].(map[string]any)["ut_metadata"].(int)
+		info.MetadataExtensionId = decoded.(map[string]any)["m"].(map[string]any)["ut_metadata"].(byte)
 		info.BitField = bitField[1:]
 		return info, nil
 	}
@@ -345,7 +344,20 @@ func main() {
 			return
 		}
 		fmt.Println("Peer ID: " + hex.EncodeToString(info.PeerId))
-		fmt.Println("Peer Metadata Extension ID: " + strconv.Itoa(info.MetadataExtensionId))
+		fmt.Println("Peer Metadata Extension ID: " + strconv.Itoa(int(info.MetadataExtensionId)))
+		conn.Close()
+	case "magnet_info":
+		torrent, _ := parseMagnetLink(os.Args[2])
+		peers := findPeers(torrent)
+		conn, _ := net.Dial("tcp", peers[0])
+		info, err := performHandshake(conn, torrent.InfoHash, true)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		encoded, _ := bencode.Encode(map[string]int{"msg_type": 0, "piece": 0})
+		writePeerMessage(conn, append([]byte{0x14, info.MetadataExtensionId}, []byte(encoded)...))
+		// msg := readPeerMessage(conn)
 		conn.Close()
 	default:
 		fmt.Println("Unknown command: " + command)
