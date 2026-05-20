@@ -395,6 +395,12 @@ func main() {
 
 			hasPiece := info.BitField[pieceIndex/8] & (1 << (7 - pieceIndex%8))
 			if hasPiece != 0x00 {
+				writePeerMessage(conn, []byte{0x02})
+				unchoke := readPeerMessage(conn)
+				if len(unchoke) == 0 || unchoke[0] != 0x01 {
+					conn.Close()
+					continue
+				}
 				data, pieceErr = getPieceFromConnection(conn, torrent, pieceIndex)
 				conn.Close()
 				break
