@@ -44,6 +44,15 @@ type ConnectionInfo struct {
 	MetadataExtensionId       int
 }
 
+func getTorrentInfo(dict map[string]any) TorrentInfo {
+	return TorrentInfo{
+		Name:        dict["name"].(string),
+		Length:      dict["length"].(int),
+		PieceLength: dict["piece length"].(int),
+		Pieces:      dict["pieces"].(string),
+	}
+}
+
 func parseTorrentFile(torrentPath string) (TorrentFile, error) {
 	file, err := os.OpenFile(torrentPath, os.O_RDONLY, 0777)
 	if err != nil {
@@ -65,12 +74,7 @@ func parseTorrentFile(torrentPath string) (TorrentFile, error) {
 
 	return TorrentFile{
 		Announce: d["announce"].(string),
-		Info: TorrentInfo{
-			Name:        info["name"].(string),
-			Length:      info["length"].(int),
-			PieceLength: info["piece length"].(int),
-			Pieces:      info["pieces"].(string),
-		},
+		Info:     getTorrentInfo(info),
 		InfoHash: infoHash[:],
 	}, nil
 }
@@ -361,10 +365,20 @@ func main() {
 			return
 		}
 		msg := append([]byte{0x14, byte(info.MetadataExtensionId)}, []byte(encoded)...)
-		fmt.Println(string(msg))
 		writePeerMessage(conn, msg)
-		// msg := readPeerMessage(conn)
+		resp := readPeerMessage(conn)
 		conn.Close()
+		reader := bufio.NewReader(bytes.NewReader(resp[2:]))
+		bencode.Decode(reader)
+		decoded2, _ := bencode.Decode(reader)
+
+		torrent.Info = getTorrentInfo(decoded2.(map[string]any))
+		var pieceHashes strings.Builder
+		for i := 0; i < len(torrent.Info.Pieces); i += 20 {
+			pieceHashes.WriteString("\n")
+			pieceHashes.WriteString(hex.EncodeToString([]byte(torrent.Info.Pieces[i : i+20])))
+		}
+		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\nPiece Length: %d\nPiece Hashes: %s\n", torrent.Announce, torrent.Info.Length, hex.EncodeToString(torrent.InfoHash), torrent.Info.PieceLength, pieceHashes.String())
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
