@@ -355,7 +355,7 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		encoded, err := bencode.Encode(map[string]int{"msg_type": 0, "piece": 0})
+		encoded, err := bencode.Encode(map[string]any{"msg_type": 0, "piece": 0})
 		if err != nil {
 			fmt.Println(err)
 			return
